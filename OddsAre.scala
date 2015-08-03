@@ -39,7 +39,10 @@ object OddsAre {
         } yield (imChannel.id, user)).toMap
         listenForOddsAre(SlackRtmClient(token), usersMap, channelIdsMap)
       }
-      case _ => println("[LOG] startup failed")
+      case Failure(err) => {
+        println("[LOG] startup failed")
+        println(err)
+      }
     }
   }
 
