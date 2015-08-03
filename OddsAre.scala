@@ -116,19 +116,21 @@ object OddsAre {
       if (message.user != rtmClient.state.self.id && !checkForCommands(rtmClient, message, "listening for challenges", None, None) && messageContains("odds are")) {
         uidsToUsers.get(message.user) match {
           case Some(author) => {
-            usernameRegex.findFirstIn(message.text).map(usernamesToUsers.get(_)) match {
-              case Some(Some(challengedUser)) => {
-                sendMessage(s"@${challengedUser.name}: reply to ${author.name}'s challenge with your upper bound.")
-                rtmClient.removeEventListener(listener)
-                val upperBoundListener = listenForUpperBound(rtmClient, uidsToUsers, channelIdToUsers, author, challengedUser)
-                updateReset(() => {
-                  sendMessage(s"@${challengedUser.name}: ya done waited too long.")
-                  rtmClient.removeEventListener(upperBoundListener)
-                  listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
-                })
+            usernameRegex.findFirstIn(message.text).map { foundUsername =>
+              usernamesToUsers.get(foundUsername) match {
+                case Some(challengedUser) => {
+                  sendMessage(s"@${challengedUser.name}: reply to ${author.name}'s challenge with your upper bound.")
+                  rtmClient.removeEventListener(listener)
+                  val upperBoundListener = listenForUpperBound(rtmClient, uidsToUsers, channelIdToUsers, author, challengedUser)
+                  updateReset(() => {
+                    sendMessage(s"@${challengedUser.name}: ya done waited too long.")
+                    rtmClient.removeEventListener(upperBoundListener)
+                    listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
+                  })
+                }
+                case _ =>
+                  sendMessage(s"@${author.name}: please direct your challenges towards another user by mentioning them.")
               }
-              case _ =>
-                sendMessage(s"@${author.name}: please direct your challenges towards another user by mentioning them.")
             }
           }
           case _ => {
