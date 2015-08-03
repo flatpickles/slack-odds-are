@@ -21,7 +21,7 @@ object OddsAre {
   }
 
   def refreshAndRun(): Unit = {
-    val token = Source.fromFile("token.txt").mkString
+    val token = Source.fromFile("token.txt").mkString.replace("\n", "")
     val apiClient = SlackApiClient(token)
     val resolvedSlackInfo: Future[(Seq[User], Seq[Im])] = for {
       users <- apiClient.listUsers()
