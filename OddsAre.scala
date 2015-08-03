@@ -223,13 +223,3 @@ object OddsAre {
     listener
   }
 }
-
-/* TODO
-
-Comments and cleanup
-Host on man1.biz server
-Post to github
-Write readme
-Regenerate token
-
-*/
