@@ -108,6 +108,7 @@ object OddsAre {
       (user.name, user)
     }.toMap
     val usernameRegex = uidsToUsers.values.map(_.name).mkString("|").r
+    val userIdRegex = uidsToUsers.keys.mkString("|").r
 
     lazy val listener: ActorRef = rtmClient.onMessage { message =>
       val sendMessage = (msg: String) => rtmClient.sendMessage(message.channel, msg)
@@ -116,8 +117,8 @@ object OddsAre {
       if (message.user != rtmClient.state.self.id && !checkForCommands(rtmClient, message, "listening for challenges", None, None) && messageContains("odds are")) {
         uidsToUsers.get(message.user) match {
           case Some(author) => {
-            usernameRegex.findFirstIn(message.text).map { foundUsername =>
-              usernamesToUsers.get(foundUsername) match {
+            val challengeUser = (foundIdentifier: String, toUserMap: Map[String, User]) => {
+              toUserMap.get(foundIdentifier) match {
                 case Some(challengedUser) => {
                   sendMessage(s"@${challengedUser.name}: reply to ${author.name}'s challenge with your upper bound.")
                   rtmClient.removeEventListener(listener)
@@ -127,10 +128,16 @@ object OddsAre {
                     rtmClient.removeEventListener(upperBoundListener)
                     listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
                   })
+                  true
                 }
-                case _ =>
-                  sendMessage(s"@${author.name}: please direct your challenges towards another user by mentioning them.")
+                case _ => false
               }
+            } : Boolean
+
+            // Look for users mentioned either by ID or by name (Slack replaces @mentions with user ID)
+            val foundName = usernameRegex.findFirstIn(message.text).map(challengeUser(_, usernamesToUsers)).getOrElse(false) || userIdRegex.findFirstIn(message.text).map(challengeUser(_, uidsToUsers)).getOrElse(false)
+            if (!foundName) {
+              sendMessage(s"@${author.name}: please direct your challenges towards another user by mentioning them.")
             }
           }
           case _ => {
