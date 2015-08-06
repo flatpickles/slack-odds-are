@@ -69,7 +69,7 @@ object OddsAre {
       val sendMessage = (msg: String) => rtmClient.sendMessage(message.channel, msg)
       val messageContains = (substring: String) => message.text.toLowerCase().contains(substring) : Boolean
 
-      if (!messageContains("odds_are")) {
+      if (!message.text.contains(s"<@${rtmClient.state.self.id}>")) {
         return false
       }
 
@@ -94,7 +94,8 @@ object OddsAre {
 
       // Print helpful info
       if (messageContains("help")) {
-        sendMessage(s"*odds_are is an automated referee for games of Odds Are.*\nAny message containing a teammate's username and the phrase 'odds are' will start a game. The bot will then prompt participants for input as needed. If a necessary response is not received within ${challengeTimeout}, the current game will be forfeited.\n\nType these commands to manage the bot:\n*odds_are help:* displays this menu.\n*odds_are restart:* restarts the bot, resetting the game in progress (if one exists). Will also reload the list of available users.\n*odds_are status:* outputs the current status of the bot.\n\nRead more about this project and the beautiful game of Odds Are: https://github.com/man1/slack-odds-are")
+        val cmdPrefix = s"@${rtmClient.state.self.name}:"
+        sendMessage(s"*${rtmClient.state.self.name} is an automated referee for games of Odds Are.*\nAny message containing a teammate's username and the phrase 'odds are' will start a game. The bot will then prompt participants for input as needed. If a necessary response is not received within ${challengeTimeout}, the current game will be forfeited.\n\nType these commands to manage the bot:\n*${cmdPrefix} help* displays this menu.\n*${cmdPrefix} restart* restarts the bot, resetting the game in progress (if one exists). Will also reload the list of available users.\n*${cmdPrefix} status* outputs the current status of the bot.\n\nRead more about this project and the beautiful game of Odds Are: https://github.com/man1/slack-odds-are")
       }
 
       return false
@@ -120,11 +121,11 @@ object OddsAre {
             val challengeUser = (foundIdentifier: String, toUserMap: Map[String, User]) => {
               toUserMap.get(foundIdentifier) match {
                 case Some(challengedUser) => {
-                  sendMessage(s"@${challengedUser.name}: reply to ${author.name}'s challenge with your upper bound.")
+                  sendMessage(s"<@${challengedUser.id}>: reply to ${author.name}'s challenge with your upper bound.")
                   rtmClient.removeEventListener(listener)
                   val upperBoundListener = listenForUpperBound(rtmClient, uidsToUsers, channelIdToUsers, author, challengedUser)
                   updateReset(() => {
-                    sendMessage(s"@${challengedUser.name}: ya done waited too long.")
+                    sendMessage(s"<@${challengedUser.id}>: ya done waited too long.")
                     rtmClient.removeEventListener(upperBoundListener)
                     listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
                   })
@@ -135,14 +136,14 @@ object OddsAre {
             } : Boolean
 
             // Look for users mentioned either by ID or by name (Slack replaces @mentions with user ID)
-            val foundName = usernameRegex.findFirstIn(message.text).map(challengeUser(_, usernamesToUsers)).getOrElse(false) || userIdRegex.findFirstIn(message.text).map(challengeUser(_, uidsToUsers)).getOrElse(false)
+            val foundName = userIdRegex.findFirstIn(message.text).map(challengeUser(_, uidsToUsers)).getOrElse(false) || usernameRegex.findFirstIn(message.text).map(challengeUser(_, usernamesToUsers)).getOrElse(false)
             if (!foundName) {
-              sendMessage(s"@${author.name}: please direct your challenges towards another user by mentioning them.")
+              sendMessage(s"<@${author.id}>: please direct your challenges towards another user by mentioning them.")
             }
           }
           case _ => {
             println(s"[LOG] Couldn't resolve message sender for ${message.text}")
-            sendMessage(s"Whoops something is broken, try sending 'odds_are restart'")
+            sendMessage(s"Whoops something is broken, try sending '@${rtmClient.state.self.name}: restart'")
           }
         }
       }
@@ -157,14 +158,14 @@ object OddsAre {
     lazy val listener: ActorRef = rtmClient.onMessage { message =>
       val sendMessage = (msg: String) => rtmClient.sendMessage(message.channel, msg)
 
-      if (message.user != rtmClient.state.self.id && !checkForCommands(rtmClient, message, s"waiting for upper bound from @${challengedUser.name}", Some(challengingUser), Some(challengedUser))) {
+      if (message.user != rtmClient.state.self.id && !checkForCommands(rtmClient, message, s"waiting for upper bound from <@${challengedUser.id}>", Some(challengingUser), Some(challengedUser))) {
         "[0-9]+".r.findFirstIn(message.text).map { bound =>
           if (bound.toInt > 0) {
-            sendMessage(s"The odds are set! @${challengingUser.name} and @${challengedUser.name}, IM me a number 1-${bound}")
+            sendMessage(s"The odds are set! <@${challengingUser.id}> and <@${challengedUser.id}>, IM me a number 1-${bound}")
             rtmClient.removeEventListener(listener)
             val imOddsListener = listenForImOdds(rtmClient, message.channel, bound.toInt, uidsToUsers, channelIdToUsers, challengingUser, challengedUser, None, None)
             updateReset(() => {
-              sendMessage(s"@${challengingUser.name} and @${challengedUser.name}: ya done waited too long.")
+              sendMessage(s"<@${challengingUser.id}> and <@${challengedUser.id}>: ya done waited too long.")
               rtmClient.removeEventListener(imOddsListener)
               listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
             })
@@ -185,8 +186,8 @@ object OddsAre {
       val sendMessage = (msg: String) => rtmClient.sendMessage(message.channel, msg)
 
       val statusMessage = firstToRespond match {
-        case Some(first) => s"waiting for an IM from @${if (first == challengingUser) challengedUser.name else challengingUser.name}"
-        case _ => s"waiting for IMs from @${challengingUser.name} and @${challengedUser.name}"
+        case Some(first) => s"waiting for an IM from <@${if (first == challengingUser) challengedUser.id else challengingUser.id}>"
+        case _ => s"waiting for IMs from <@${challengingUser.id}> and <@${challengedUser.id}>"
       }
       if (message.user != rtmClient.state.self.id && !checkForCommands(rtmClient, message, statusMessage, Some(challengingUser), Some(challengedUser))) {
         channelIdToUsers.get(message.channel).map { user =>
@@ -208,7 +209,7 @@ object OddsAre {
                   case (Some(firstUser), Some(firstNumber)) if (firstUser.id != user.id) => {
                     // This is the second IM response, we have both!
                     val baseMessage = s"The results are in! Out of ${upperBound}, ${firstUser.name} entered *${firstNumber}*, and ${currentUser.name} entered *${number}*. "
-                    val finalMessage = baseMessage + (if (number == firstNumber) s"Suck it @${challengedUser.name}!!" else s"You'll get 'em next time, @${challengingUser.name}.")
+                    val finalMessage = baseMessage + (if (number == firstNumber) s"Suck it <@${challengedUser.id}>!!" else s"You'll get 'em next time, <@${challengingUser.id}>.")
                     rtmClient.sendMessage(groupChannel, finalMessage)
                     rtmClient.removeEventListener(listener)
                     listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
@@ -220,7 +221,7 @@ object OddsAre {
                     var nextImOddsListener = listenForImOdds(rtmClient, groupChannel, upperBound, uidsToUsers, channelIdToUsers, challengingUser, challengedUser, Some(number), Some(currentUser))
                     updateReset(() => {
                       val slowUser = if (user.id == challengingUser.id) challengedUser else challengingUser
-                      rtmClient.sendMessage(groupChannel, s"@${slowUser.name}: ya done waited too long.")
+                      rtmClient.sendMessage(groupChannel, s"<@${slowUser.id}>: ya done waited too long.")
                       rtmClient.removeEventListener(nextImOddsListener)
                       listenForOddsAre(rtmClient, uidsToUsers, channelIdToUsers)
                     })
